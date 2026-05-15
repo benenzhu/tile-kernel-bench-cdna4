@@ -20,11 +20,13 @@ import traceback
 
 # Registered op modules. Order = bench order = table order.
 OP_MODULES = [
-    "gemm.example_gemm",         # fp16, sweeps both NN and NT layouts
-    "gemm.example_gemm_fp8",     # fp8 NT, sweeps plain + preshuffled B
-    "norm.example_softmax",      # bf16, memory-bound
-    "norm.example_rmsnorm",      # bf16, memory-bound
-    "norm.example_layernorm",    # bf16, memory-bound
+    "gemm.example_gemm",                      # fp16, sweeps NN + NT layouts
+    "gemm.example_gemm_fp8",                  # fp8 NT, plain + preshuffled B
+    "gemv.example_gemv",                      # fp16 vectorized split-K gemv
+    "norm.example_softmax",                   # bf16, memory-bound
+    "norm.example_rmsnorm",                   # bf16, memory-bound
+    "norm.example_layernorm",                 # bf16, memory-bound
+    "attention.example_flash_attn_fwd",       # fp16 MHA fwd, ±causal
     "mla.example_mla_decode",
 ]
 
