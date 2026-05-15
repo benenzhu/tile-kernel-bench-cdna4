@@ -37,13 +37,18 @@ OP_MODULES = [
 
 def print_header():
     print(f"{'op':<14} {'shape':<28} {'dtype':<6} {'tile':<22} "
-          f"{'TB/s':>10} {'TFLOPS':>10}")
-    print(f"{'-'*14} {'-'*28} {'-'*6} {'-'*22} {'-'*10} {'-'*10}")
+          f"{'TB/s':>10} {'TFLOPS':>10} {'VGPR':>6} {'spill+sc':>9}")
+    print(f"{'-'*14} {'-'*28} {'-'*6} {'-'*22} {'-'*10} {'-'*10} {'-'*6} {'-'*9}")
+
+
+def _fmt_int(v):
+    return "-" if v is None else f"{v:>0d}"
 
 
 def print_row(r):
     print(f"{r['op']:<14} {r['shape_str']:<28} {r['dtype']:<6} {r['tile_str']:<22} "
-          f"{r['tbps']:>10.3f} {r['tflops']:>10.3f}")
+          f"{r['tbps']:>10.3f} {r['tflops']:>10.3f} "
+          f"{_fmt_int(r.get('n_regs')):>6} {_fmt_int(r.get('n_spills')):>9}")
 
 
 def main():
@@ -76,6 +81,17 @@ def main():
             try:
                 r = mod.bench_one(case, check=not args.no_check)
                 r["op"] = mod.OP_NAME
+                # Pull resource counts off the kernel object that bench_one
+                # threaded through (HIP only; None on other targets).
+                from tl_patches import get_kernel_resources
+                kernel_obj = r.pop("_kernel", None)
+                if kernel_obj is not None:
+                    n_regs, n_spills = get_kernel_resources(kernel_obj)
+                    r["n_regs"] = n_regs
+                    r["n_spills"] = n_spills
+                else:
+                    r["n_regs"] = None
+                    r["n_spills"] = None
                 results.append(r)
             except Exception as e:
                 print(f"  FAILED: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
@@ -95,11 +111,15 @@ def main():
         with open(args.output_csv, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["op", "shape_str", "tile_str", "dtype",
-                        "latency_ms", "tbps", "tflops"])
+                        "latency_ms", "tbps", "tflops",
+                        "n_regs", "n_spills"])
             for r in results:
-                w.writerow([r["op"], r["shape_str"], r["tile_str"], r["dtype"],
-                            f"{r['latency_ms']:.6f}", f"{r['tbps']:.6f}",
-                            f"{r['tflops']:.6f}"])
+                w.writerow([
+                    r["op"], r["shape_str"], r["tile_str"], r["dtype"],
+                    f"{r['latency_ms']:.6f}", f"{r['tbps']:.6f}", f"{r['tflops']:.6f}",
+                    "" if r.get("n_regs") is None else r["n_regs"],
+                    "" if r.get("n_spills") is None else r["n_spills"],
+                ])
         print(f"\nWrote CSV: {args.output_csv}")
 
     if failures:

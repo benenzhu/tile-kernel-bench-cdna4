@@ -84,3 +84,52 @@ def _patched_bench_with_cupti(fn, cache, n_repeat: int) -> float:
 
 
 _tlbench._bench_with_cupti = _patched_bench_with_cupti
+
+
+# ---------------------------------------------------------------------------
+# Widen the HIP resource-usage recorder window so the cython execution
+# backend works too. Upstream's JITKernel._compile_and_create_adapter only
+# wraps tilelang.lower() with reset_recorder/pop_recorded. lower() compiles
+# hipcc only when enable_device_compile=True (tvm_ffi backend). With the
+# cython backend hipcc runs LATER inside the adapter constructor, after the
+# recorder has already been popped -> kernel.resource_usage is empty.
+#
+# Re-pop after the original method returns; if anything landed there (the
+# late hipcc call), promote it onto the kernel.
+# ---------------------------------------------------------------------------
+from tilelang import JITKernel as _JITKernel  # noqa: E402
+from tilelang.jit.adapter.utils import is_hip_target as _is_hip  # noqa: E402
+
+_orig_compile = _JITKernel._compile_and_create_adapter
+
+
+def _patched_compile_and_create_adapter(self, *args, **kwargs):
+    adapter = _orig_compile(self, *args, **kwargs)
+    if _is_hip(self.target):
+        from tilelang.jit.adapter.hip_resource_info import pop_recorded
+        late = pop_recorded()
+        if late and not getattr(self, "_resource_usage", None):
+            self._resource_usage = late
+    return adapter
+
+
+_JITKernel._compile_and_create_adapter = _patched_compile_and_create_adapter
+
+
+def get_kernel_resources(kernel):
+    """Return ``(n_regs, n_spills_total)`` for a HIP kernel, or
+    ``(None, None)`` on other targets / cache-loaded kernels with no
+    captured remarks.
+
+    `n_spills_total` is `VGPRs Spill + ScratchSize_bytes // 4` -- treating
+    one scratch dword the same as one spilled VGPR for accounting, since
+    both end up in main memory and cost roughly the same to access.
+    """
+    info = getattr(kernel, "_primary_resource_usage", lambda: None)()
+    if info is None:
+        return None, None
+    try:
+        scratch_bytes = int(info.extra.get("ScratchSize [bytes/lane]", "0"))
+    except (ValueError, AttributeError):
+        scratch_bytes = 0
+    return info.n_regs, info.n_spills + scratch_bytes // 4
