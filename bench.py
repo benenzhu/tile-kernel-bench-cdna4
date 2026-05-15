@@ -26,7 +26,7 @@ OP_MODULES = [
     # float8_* tensor raises BufferError("float8 types are not supported by
     # dlpack") inside tvm_ffi.core.TVMFFIPyArgSetterTorchFallback_. The kernel
     # source is kept on disk so it's ready to wire back in.
-    "gemm.example_gemm_fp8", # TODO(fp8): fix it. It should enable now. 
+    # "gemm.example_gemm_fp8", # TODO(fp8): fix it. It should enable now. 
     "mla.example_mla_decode",
 ]
 
