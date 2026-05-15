@@ -58,6 +58,8 @@ def main():
     keys = sorted(set(base) | set(cur))
     regressions = []
     improvements = []
+    new_shapes = []
+    missing_shapes = []
 
     cols = (
         f"{'op':<12} {'shape':<28} {'dtype':<6} "
@@ -82,12 +84,14 @@ def main():
                   f"{'-':<22} {c['tile']:<22} "
                   f"{'n/a':>12} {c['tflops']:>12.3f} {'NEW':>10} "
                   f"{'n/a':>10} {c['tbps']:>10.3f} {'NEW':>10}")
+            new_shapes.append((op, shape, dt, c))
             continue
         if c is None:
             print(f"{op:<12} {shape:<28} {dt:<6} "
                   f"{b['tile']:<22} {'-':<22} "
                   f"{b['tflops']:>12.3f} {'n/a':>12} {'MISSING':>10} "
                   f"{b['tbps']:>10.3f} {'n/a':>10} {'MISSING':>10}")
+            missing_shapes.append((op, shape, dt, b))
             continue
         tflops_delta = fmt_delta(b["tflops"], c["tflops"])
         tbps_delta = fmt_delta(b["tbps"], c["tbps"])
@@ -109,6 +113,18 @@ def main():
             improvements.append((op, shape, dt, b, c, pct, metric, b_v, c_v))
 
     print()
+    if new_shapes:
+        print(f"NEW: {len(new_shapes)} shape(s) added vs baseline:")
+        for op, shape, dt, c in new_shapes:
+            metric, value = ("TFLOPS", c["tflops"]) if c["tflops"] > 0 else ("TB/s", c["tbps"])
+            print(f"  * {op} {shape} {dt}: {value:.3f} ({c['tile']}) {metric}")
+        print()
+    if missing_shapes:
+        print(f"REMOVED: {len(missing_shapes)} shape(s) gone vs baseline:")
+        for op, shape, dt, b in missing_shapes:
+            metric, value = ("TFLOPS", b["tflops"]) if b["tflops"] > 0 else ("TB/s", b["tbps"])
+            print(f"  * {op} {shape} {dt}: was {value:.3f} ({b['tile']}) {metric}")
+        print()
     if improvements:
         print(f"WINS: {len(improvements)} shape(s) improved > {args.threshold:.2f}%:")
         for op, shape, dt, b, c, pct, metric, b_v, c_v in improvements:

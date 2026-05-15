@@ -11,6 +11,8 @@ permissions:
   contents: read
   # Needed for `gh run list/download` to fetch the latest main run's CSV.
   actions: read
+  # Needed for the sticky-pull-request-comment action to post bench results.
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -98,13 +100,51 @@ jobs:
           ls -la /tmp/baseline/
 
       - name: Compare PR vs main baseline
+        id: compare
         if: github.event_name == 'pull_request' && steps.download-baseline.outcome == 'success'
+        # Don't fail the job here -- we want the comment posted even on
+        # regression. A dedicated step at the end re-raises the failure.
+        continue-on-error: true
         run: |
           if [ -f /tmp/baseline/bench_current.csv ]; then
-            python compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv
+            python compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv | tee /tmp/compare.txt
+            exit ${PIPESTATUS[0]}
           else
-            echo "Baseline CSV not present (likely the very first run on main has not yet completed). Skipping."
+            echo "Baseline CSV not present (likely the very first run on main has not yet completed). Skipping." | tee /tmp/compare.txt
           fi
+
+      - name: Build PR comment body
+        if: github.event_name == 'pull_request' && steps.compare.conclusion != 'skipped'
+        run: |
+          status="${{ steps.compare.outcome == 'failure' && 'FAIL (regression detected)' || 'OK' }}"
+          {
+            echo "## Bench results vs \`main\`"
+            echo ""
+            echo "**Result:** $status"
+            echo ""
+            echo "<details><summary>Full compare output</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/compare.txt
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo ""
+            echo "_Self-hosted runner: \`${{ runner.name }}\` &middot; commit \`${{ github.event.pull_request.head.sha }}\`_"
+          } > /tmp/comment.md
+
+      - name: Post sticky comment to PR
+        if: github.event_name == 'pull_request' && steps.compare.conclusion != 'skipped'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: bench-results
+          path: /tmp/comment.md
+
+      - name: Re-fail job if compare regressed
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "compare_bench.py reported a regression -- failing the job."
+          exit 1
 
       - name: Upload PR bench CSV
         if: always() && github.event_name == 'pull_request'
