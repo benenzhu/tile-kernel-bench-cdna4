@@ -20,13 +20,8 @@ import traceback
 
 # Registered op modules. Order = bench order = table order.
 OP_MODULES = [
-    "gemm.example_gemm",  # fp16, sweeps both NN and NT layouts
-    # TODO(fp8): re-enable "gemm.example_gemm_fp8" once tvm-ffi's torch dlpack
-    # bridge accepts fp8 dtypes. Right now any kernel call with a torch
-    # float8_* tensor raises BufferError("float8 types are not supported by
-    # dlpack") inside tvm_ffi.core.TVMFFIPyArgSetterTorchFallback_. The kernel
-    # source is kept on disk so it's ready to wire back in.
-    "gemm.example_gemm_fp8", # TODO(fp8): fix it. It should enable now.
+    "gemm.example_gemm",      # fp16, sweeps both NN and NT layouts
+    "gemm.example_gemm_fp8",  # fp8 NT, sweeps plain + preshuffled B
     "mla.example_mla_decode",
 ]
 
