@@ -97,19 +97,28 @@ def main():
     cases = args.shapes if args.shapes else DEFAULT_CASES
     dtype = torch.float16
 
-    print("=" * 80)
-    print("Benchmarks")
-    print("=" * 80)
-    print()
-    print_header()
-
-    for case in cases:
+    # Run all cases first; tilelang prints INFO logs during compile/bench, so
+    # printing the table inline gets interleaved. Collect results and dump
+    # the table at the very end.
+    results = []
+    for i, case in enumerate(cases, 1):
+        print(f"[{i}/{len(cases)}] benchmarking "
+              f"{case.M}x{case.N}x{case.K} ...", flush=True)
         tbs, tflops = bench_one(case, dtype=dtype, check=not args.no_check)
         shape = (
             f"{case.M}x{case.N}x{case.K}"
             f"_tile{case.block_M}x{case.block_N}x{case.block_K}"
         )
-        print_row("gemm", shape, DTYPE_NAME[dtype], tbs, tflops)
+        results.append((shape, DTYPE_NAME[dtype], tbs, tflops))
+
+    print()
+    print("=" * 80)
+    print("Benchmarks")
+    print("=" * 80)
+    print()
+    print_header()
+    for shape, dtype_name, tbs, tflops in results:
+        print_row("gemm", shape, dtype_name, tbs, tflops)
 
 
 if __name__ == "__main__":
