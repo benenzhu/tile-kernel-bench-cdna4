@@ -28,6 +28,7 @@ OP_MODULES = [
     "norm.example_layernorm",                 # bf16, memory-bound
     "attention.example_flash_attn_fwd",       # fp16 MHA fwd, ±causal
     "mla.example_mla_decode",
+    "elementwise.example_add_3d_large",       # fp16 3D add, >4 GB BufferLoad guard
 ]
 
 
