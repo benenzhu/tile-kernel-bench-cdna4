@@ -1,0 +1,38 @@
+name: Tilelang kernel bench
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: linux-flydsl-mi355-1
+    timeout-minutes: 60
+    steps:
+      - name: Checkout bench repo
+        uses: actions/checkout@v4
+
+      - name: Build tilelang (editable)
+        run: |
+          cd /root/tilelang2
+          PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
+
+      - name: Smoke test (single shape)
+        run: |
+          python gemm/example_gemm.py
+
+      - name: Run gemm bench sweep
+        run: |
+          cd gemm && python bench_gemm.py
