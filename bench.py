@@ -20,8 +20,7 @@ import traceback
 
 # Registered op modules. Order = bench order = table order.
 OP_MODULES = [
-    "gemm.example_gemm",     # NN layout (B is (K, N))
-    "gemm.example_gemm_nt",  # NT layout (B is (N, K), transpose_B=True)
+    "gemm.example_gemm",  # fp16, sweeps both NN and NT layouts
     # TODO(fp8): re-enable "gemm.example_gemm_fp8" once tvm-ffi's torch dlpack
     # bridge accepts fp8 dtypes. Right now any kernel call with a torch
     # float8_* tensor raises BufferError("float8 types are not supported by
@@ -62,8 +61,6 @@ def main():
             print(f"No ops match {args.ops}", file=sys.stderr)
             sys.exit(2)
 
-    op_order = {m.OP_NAME: i for i, m in enumerate(ops)}
-
     results = []
     failures = []
     total = sum(len(m.CASES) for m in ops)
@@ -80,11 +77,6 @@ def main():
                 print(f"  FAILED: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
                 traceback.print_exc()
                 failures.append((mod.OP_NAME, case, repr(e)))
-
-    # Sort the report (and CSV) so same-shape rows from different ops sit
-    # next to each other; ties fall back to the registry order so e.g. NN
-    # is always above NT.
-    results.sort(key=lambda r: (r["shape_str"], op_order.get(r["op"], 1 << 30)))
 
     print()
     print("=" * 90)
