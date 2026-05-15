@@ -43,9 +43,9 @@ jobs:
         run: |
           python gemm/example_gemm.py
 
-      - name: Run gemm bench sweep
+      - name: Run bench sweep (all ops)
         run: |
-          cd gemm && python bench_gemm.py --output-csv /tmp/bench_current.csv
+          python bench.py --output-csv /tmp/bench_current.csv
 
       # ----- baseline upload (push to main) --------------------------------
       # Every successful main run publishes its CSV as the "bench-baseline-main"
@@ -94,7 +94,7 @@ jobs:
         if: github.event_name == 'pull_request' && steps.download-baseline.outcome == 'success'
         run: |
           if [ -f /tmp/baseline/bench_current.csv ]; then
-            python gemm/compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv
+            python compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv
           else
             echo "Baseline CSV not present (likely the very first run on main has not yet completed). Skipping."
           fi
