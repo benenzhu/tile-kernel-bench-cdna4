@@ -28,6 +28,11 @@ jobs:
       LD_LIBRARY_PATH: /opt/rocm/lib
       # tilelang's CMake auto-selects CUDA otherwise; force the ROCm/HIP backend.
       USE_ROCM: "1"
+      # TODO: remove when upstream tvm-ffi is fixed -- right now its torch
+      # dlpack bridge can't resolve ROCm's dlpack and any kernel call dies
+      # at TVMFFIPyArgSetterTorchFallback_. The cython execution backend
+      # bypasses that path.
+      TILELANG_EXECUTION_BACKEND: cython
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
