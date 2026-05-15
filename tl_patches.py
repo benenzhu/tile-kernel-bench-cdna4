@@ -21,16 +21,24 @@ import tilelang.profiler.bench as _tlbench
 
 
 _ITER_MARKER = "tilelang_bench_iter"
+_MIN_REPEAT_DEFAULT = 100
 
 
 def _patched_bench_with_cupti(fn, cache, n_repeat: int) -> float:
     """Drop-in replacement for tilelang's _bench_with_cupti that records a
     per-iter marker so we can aggregate via mean/median/min/max instead of
     being limited to the average key_averages() reports.
+
+    Also enforces a minimum sample count (TL_BENCH_MIN_REPEAT, default 100)
+    so the median has enough data even for slow kernels where do_bench's
+    auto-tuned n_repeat would only give a handful of samples.
     """
     return_mode = os.environ.get("TL_BENCH_RETURN_MODE", "median")
     if return_mode not in ("min", "max", "mean", "median"):
         raise ValueError(f"TL_BENCH_RETURN_MODE={return_mode!r} invalid")
+
+    min_repeat = int(os.environ.get("TL_BENCH_MIN_REPEAT", _MIN_REPEAT_DEFAULT))
+    n_repeat = max(n_repeat, min_repeat)
 
     with _tlbench.suppress_stdout_stderr():
         schedule = torch.profiler.schedule(wait=1, warmup=0, active=1, repeat=1)
