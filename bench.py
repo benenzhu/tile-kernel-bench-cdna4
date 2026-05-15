@@ -20,8 +20,11 @@ import traceback
 
 # Registered op modules. Order = bench order = table order.
 OP_MODULES = [
-    "gemm.example_gemm",      # fp16, sweeps both NN and NT layouts
-    "gemm.example_gemm_fp8",  # fp8 NT, sweeps plain + preshuffled B
+    "gemm.example_gemm",         # fp16, sweeps both NN and NT layouts
+    "gemm.example_gemm_fp8",     # fp8 NT, sweeps plain + preshuffled B
+    "norm.example_softmax",      # bf16, memory-bound
+    "norm.example_rmsnorm",      # bf16, memory-bound
+    "norm.example_layernorm",    # bf16, memory-bound
     "mla.example_mla_decode",
 ]
 
