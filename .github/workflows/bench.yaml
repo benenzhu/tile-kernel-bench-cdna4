@@ -117,20 +117,26 @@ jobs:
       - name: Build PR comment body
         if: github.event_name == 'pull_request' && steps.compare.conclusion != 'skipped'
         run: |
+          # Each push posts a NEW comment (no sticky overwrite) -- empty
+          # commits + workflow re-runs leave a history so you can tell
+          # whether a regression is reproducible vs. flaky.
+          sha="${{ github.event.pull_request.head.sha }}"
+          short_sha="${sha:0:7}"
           {
-            echo "## Bench results vs \`main\`"
+            echo "## Bench results vs \`main\` (commit \`${short_sha}\`, run #${{ github.run_number }}.${{ github.run_attempt }})"
             echo ""
             cat /tmp/compare.md
             echo ""
-            echo "_Self-hosted runner: \`${{ runner.name }}\` &middot; commit \`${{ github.event.pull_request.head.sha }}\`_"
+            echo "_Self-hosted runner: \`${{ runner.name }}\` &middot; [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
           } > /tmp/comment.md
 
-      - name: Post sticky comment to PR
+      - name: Post comment to PR
         if: github.event_name == 'pull_request' && steps.compare.conclusion != 'skipped'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: bench-results
-          path: /tmp/comment.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file /tmp/comment.md
 
       - name: Re-fail job if compare regressed
         if: steps.compare.outcome == 'failure'

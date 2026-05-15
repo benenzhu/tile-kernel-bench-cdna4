@@ -17,6 +17,9 @@ import importlib
 import sys
 import traceback
 
+# Apply local tilelang monkey-patches BEFORE any op module imports tilelang.
+import tl_patches  # noqa: F401
+
 
 # Registered op modules. Order = bench order = table order.
 OP_MODULES = [
