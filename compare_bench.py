@@ -50,6 +50,8 @@ def main():
     ap.add_argument("current")
     ap.add_argument("--threshold", type=float, default=5.0,
                     help="Fail if TFLOPS regresses by more than this %% (default 5)")
+    ap.add_argument("--markdown", type=str, default=None,
+                    help="Also write a markdown summary to this path (PR comment body)")
     args = ap.parse_args()
 
     base = load_csv(args.baseline)
@@ -75,30 +77,37 @@ def main():
     print(cols)
     print("-" * len(cols))
 
+    # Capture table rows so we can also emit a markdown copy later.
+    table_rows = []
+
+    def emit(line):
+        print(line)
+        table_rows.append(line)
+
     for k in keys:
         op, shape, dt = k
         b = base.get(k)
         c = cur.get(k)
         if b is None:
-            print(f"{op:<12} {shape:<28} {dt:<6} "
-                  f"{'-':<22} {c['tile']:<22} "
-                  f"{'n/a':>12} {c['tflops']:>12.3f} {'NEW':>10} "
-                  f"{'n/a':>10} {c['tbps']:>10.3f} {'NEW':>10}")
+            emit(f"{op:<12} {shape:<28} {dt:<6} "
+                 f"{'-':<22} {c['tile']:<22} "
+                 f"{'n/a':>12} {c['tflops']:>12.3f} {'NEW':>10} "
+                 f"{'n/a':>10} {c['tbps']:>10.3f} {'NEW':>10}")
             new_shapes.append((op, shape, dt, c))
             continue
         if c is None:
-            print(f"{op:<12} {shape:<28} {dt:<6} "
-                  f"{b['tile']:<22} {'-':<22} "
-                  f"{b['tflops']:>12.3f} {'n/a':>12} {'MISSING':>10} "
-                  f"{b['tbps']:>10.3f} {'n/a':>10} {'MISSING':>10}")
+            emit(f"{op:<12} {shape:<28} {dt:<6} "
+                 f"{b['tile']:<22} {'-':<22} "
+                 f"{b['tflops']:>12.3f} {'n/a':>12} {'MISSING':>10} "
+                 f"{b['tbps']:>10.3f} {'n/a':>10} {'MISSING':>10}")
             missing_shapes.append((op, shape, dt, b))
             continue
         tflops_delta = fmt_delta(b["tflops"], c["tflops"])
         tbps_delta = fmt_delta(b["tbps"], c["tbps"])
-        print(f"{op:<12} {shape:<28} {dt:<6} "
-              f"{b['tile']:<22} {c['tile']:<22} "
-              f"{b['tflops']:>12.3f} {c['tflops']:>12.3f} {tflops_delta:>10} "
-              f"{b['tbps']:>10.3f} {c['tbps']:>10.3f} {tbps_delta:>10}")
+        emit(f"{op:<12} {shape:<28} {dt:<6} "
+             f"{b['tile']:<22} {c['tile']:<22} "
+             f"{b['tflops']:>12.3f} {c['tflops']:>12.3f} {tflops_delta:>10} "
+             f"{b['tbps']:>10.3f} {c['tbps']:>10.3f} {tbps_delta:>10}")
 
         # Pick the primary perf metric per row: TFLOPS for compute-bound ops,
         # TB/s for memory-bound (softmax/norm/etc emit tflops=0 in CSV).
@@ -137,9 +146,80 @@ def main():
         for op, shape, dt, b, c, pct, metric, b_v, c_v in regressions:
             print(f"  - {op} {shape} {dt}: {b_v:.3f} ({b['tile']}) -> "
                   f"{c_v:.3f} ({c['tile']}) {metric} ({pct:+.2f}%)")
-        sys.exit(1)
     else:
         print(f"OK: no perf regression beyond {args.threshold:.2f}%")
+
+    if args.markdown:
+        _write_markdown(
+            args.markdown, args.threshold, cols, table_rows,
+            regressions, improvements, new_shapes, missing_shapes,
+        )
+
+    if regressions:
+        sys.exit(1)
+
+
+def _write_markdown(path, threshold, header_line, table_rows,
+                    regressions, improvements, new_shapes, missing_shapes):
+    """Render a PR-comment-friendly markdown summary.
+
+    Important headlines (regressions, wins, new) live OUTSIDE the
+    collapsible block so the reader doesn't have to expand to see them.
+    The full per-row table is inside <details>.
+    """
+    if regressions:
+        status = f"**Status: FAIL** ({len(regressions)} regression(s) > {threshold:.2f}%)"
+    else:
+        status = f"**Status: OK** (no regression beyond {threshold:.2f}%)"
+
+    lines = []
+    lines.append(status)
+    lines.append("")
+
+    if regressions:
+        lines.append(f"### Regressions ({len(regressions)})")
+        for op, shape, dt, b, c, pct, metric, b_v, c_v in regressions:
+            lines.append(
+                f"- `{op}` `{shape}` {dt}: **{b_v:.3f} → {c_v:.3f} {metric} ({pct:+.2f}%)** "
+                f"(tile `{b['tile']}` → `{c['tile']}`)"
+            )
+        lines.append("")
+
+    if improvements:
+        lines.append(f"### Wins ({len(improvements)})")
+        for op, shape, dt, b, c, pct, metric, b_v, c_v in improvements:
+            lines.append(
+                f"- `{op}` `{shape}` {dt}: **{b_v:.3f} → {c_v:.3f} {metric} ({pct:+.2f}%)** "
+                f"(tile `{b['tile']}` → `{c['tile']}`)"
+            )
+        lines.append("")
+
+    if new_shapes:
+        lines.append(f"### New shapes ({len(new_shapes)})")
+        for op, shape, dt, c in new_shapes:
+            metric, value = ("TFLOPS", c["tflops"]) if c["tflops"] > 0 else ("TB/s", c["tbps"])
+            lines.append(f"- `{op}` `{shape}` {dt}: {value:.3f} {metric} (tile `{c['tile']}`)")
+        lines.append("")
+
+    if missing_shapes:
+        lines.append(f"### Removed shapes ({len(missing_shapes)})")
+        for op, shape, dt, b in missing_shapes:
+            metric, value = ("TFLOPS", b["tflops"]) if b["tflops"] > 0 else ("TB/s", b["tbps"])
+            lines.append(f"- `{op}` `{shape}` {dt}: was {value:.3f} {metric}")
+        lines.append("")
+
+    lines.append(f"<details><summary>Full compare table ({len(table_rows)} rows)</summary>")
+    lines.append("")
+    lines.append("```")
+    lines.append(header_line)
+    lines.append("-" * len(header_line))
+    lines.extend(table_rows)
+    lines.append("```")
+    lines.append("")
+    lines.append("</details>")
+
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

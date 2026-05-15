@@ -107,28 +107,20 @@ jobs:
         continue-on-error: true
         run: |
           if [ -f /tmp/baseline/bench_current.csv ]; then
-            python compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv | tee /tmp/compare.txt
-            exit ${PIPESTATUS[0]}
+            python compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv \
+              --markdown /tmp/compare.md
           else
-            echo "Baseline CSV not present (likely the very first run on main has not yet completed). Skipping." | tee /tmp/compare.txt
+            echo "_Baseline CSV not present (likely the very first run on main has not yet completed). Skipping compare._" \
+              > /tmp/compare.md
           fi
 
       - name: Build PR comment body
         if: github.event_name == 'pull_request' && steps.compare.conclusion != 'skipped'
         run: |
-          status="${{ steps.compare.outcome == 'failure' && 'FAIL (regression detected)' || 'OK' }}"
           {
             echo "## Bench results vs \`main\`"
             echo ""
-            echo "**Result:** $status"
-            echo ""
-            echo "<details><summary>Full compare output</summary>"
-            echo ""
-            echo '```'
-            cat /tmp/compare.txt
-            echo '```'
-            echo ""
-            echo "</details>"
+            cat /tmp/compare.md
             echo ""
             echo "_Self-hosted runner: \`${{ runner.name }}\` &middot; commit \`${{ github.event.pull_request.head.sha }}\`_"
           } > /tmp/comment.md
