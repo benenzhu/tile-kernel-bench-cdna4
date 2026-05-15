@@ -21,7 +21,7 @@ import tilelang.profiler.bench as _tlbench
 
 
 _ITER_MARKER = "tilelang_bench_iter"
-_MIN_REPEAT_DEFAULT = 100
+_MIN_REPEAT_DEFAULT = 200
 
 
 def _patched_bench_with_cupti(fn, cache, n_repeat: int) -> float:
