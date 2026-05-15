@@ -20,6 +20,12 @@ jobs:
   bench:
     runs-on: self-hosted
     timeout-minutes: 60
+    env:
+      # The runner is non-interactive; ~/.bashrc isn't sourced. Pin the venv
+      # and ROCm onto PATH/LD_LIBRARY_PATH explicitly so `python`, `pip`, and
+      # the ROCm runtime resolve the same way as the user's interactive shell.
+      PATH: /opt/venv/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      LD_LIBRARY_PATH: /opt/rocm/lib
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
