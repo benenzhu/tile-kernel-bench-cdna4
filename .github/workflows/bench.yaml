@@ -46,6 +46,10 @@ jobs:
         run: |
           python gemm/example_gemm.py
 
+      - name: Show GPU info (amd-smi)
+        run: |
+          amd-smi static || true
+
       - name: Run bench sweep (all ops)
         run: |
           python bench.py --output-csv /tmp/bench_current.csv
