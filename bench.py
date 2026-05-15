@@ -62,6 +62,8 @@ def main():
             print(f"No ops match {args.ops}", file=sys.stderr)
             sys.exit(2)
 
+    op_order = {m.OP_NAME: i for i, m in enumerate(ops)}
+
     results = []
     failures = []
     total = sum(len(m.CASES) for m in ops)
@@ -78,6 +80,11 @@ def main():
                 print(f"  FAILED: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
                 traceback.print_exc()
                 failures.append((mod.OP_NAME, case, repr(e)))
+
+    # Sort the report (and CSV) so same-shape rows from different ops sit
+    # next to each other; ties fall back to the registry order so e.g. NN
+    # is always above NT.
+    results.sort(key=lambda r: (r["shape_str"], op_order.get(r["op"], 1 << 30)))
 
     print()
     print("=" * 90)
