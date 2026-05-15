@@ -26,6 +26,8 @@ jobs:
       # the ROCm runtime resolve the same way as the user's interactive shell.
       PATH: /opt/venv/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       LD_LIBRARY_PATH: /opt/rocm/lib
+      # tilelang's CMake auto-selects CUDA otherwise; force the ROCm/HIP backend.
+      USE_ROCM: "1"
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
@@ -33,7 +35,14 @@ jobs:
       - name: Build tilelang (editable)
         run: |
           cd /root/tilelang2
-          PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
+          # CMake caches USE_ROCM in build/CMakeCache.txt; if a previous run
+          # configured CPU-only, the env var alone won't flip the cache. Wipe
+          # build/ when it exists but doesn't have ROCM enabled, then build.
+          if [ -f build/CMakeCache.txt ] && ! grep -q '^USE_ROCM:STRING=ON' build/CMakeCache.txt; then
+            echo "Stale CMake cache (USE_ROCM != ON) -- wiping build/"
+            rm -rf build
+          fi
+          USE_ROCM=ON PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
 
       - name: Smoke test (single shape)
         run: |
