@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  # Needed for `gh run list/download` to fetch the latest main run's CSV.
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,4 +45,65 @@ jobs:
 
       - name: Run gemm bench sweep
         run: |
-          cd gemm && python bench_gemm.py
+          cd gemm && python bench_gemm.py --output-csv /tmp/bench_current.csv
+
+      # ----- baseline upload (push to main) --------------------------------
+      # Every successful main run publishes its CSV as the "bench-baseline-main"
+      # artifact. PRs download the most recent one and diff against it.
+
+      - name: Upload baseline (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline-main
+          path: /tmp/bench_current.csv
+          retention-days: 90
+          overwrite: true
+
+      # ----- compare-to-main (PRs only) ------------------------------------
+      # Fetch the most recent successful main run's bench-baseline-main
+      # artifact via gh CLI (much faster than rebuilding+rerunning on main).
+      # If no baseline exists yet, the compare step is skipped and a note is
+      # printed instead of failing the PR.
+
+      - name: Download main baseline CSV
+        if: github.event_name == 'pull_request'
+        id: download-baseline
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          rm -rf /tmp/baseline && mkdir -p /tmp/baseline
+          RUN_ID=$(gh run list \
+            --workflow "${{ github.workflow }}" \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty')
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful main run found yet -- skipping compare."
+            exit 0
+          fi
+          echo "Baseline run: $RUN_ID"
+          gh run download "$RUN_ID" -n bench-baseline-main -D /tmp/baseline
+          ls -la /tmp/baseline/
+
+      - name: Compare PR vs main baseline
+        if: github.event_name == 'pull_request' && steps.download-baseline.outcome == 'success'
+        run: |
+          if [ -f /tmp/baseline/bench_current.csv ]; then
+            python gemm/compare_bench.py /tmp/baseline/bench_current.csv /tmp/bench_current.csv
+          else
+            echo "Baseline CSV not present (likely the very first run on main has not yet completed). Skipping."
+          fi
+
+      - name: Upload PR bench CSV
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-pr
+          path: /tmp/bench_current.csv
+          if-no-files-found: ignore
+          retention-days: 14

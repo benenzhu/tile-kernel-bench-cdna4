@@ -7,6 +7,7 @@ Output format (matches FlyDSL CI):
     gemm                   1024x1024x1024_tile128x128x32      fp16            X.XXX    XXX.XXX
 """
 import argparse
+import csv
 from dataclasses import dataclass
 
 import torch
@@ -24,17 +25,17 @@ class Case:
     K: int
     block_M: int = 128
     block_N: int = 128
-    block_K: int = 32
+    block_K: int = 64
 
 
 DEFAULT_CASES = [
     Case(1024, 1024, 1024),
+    Case(1024, 8192, 8192),
     Case(2048, 2048, 2048),
     Case(4096, 4096, 4096),
-    Case(8192, 8192, 8192),
-    Case(1024, 8192, 8192),
-    Case(8192, 8192, 1024),
     Case(4096, 4096, 8192),
+    Case(8192, 8192, 1024),
+    Case(8192, 8192, 8192),
 ]
 
 
@@ -56,7 +57,7 @@ def bench_one(case: Case, dtype, check: bool):
     bytes_moved = (M * K + K * N + M * N) * DTYPE_BYTES[dtype]
     tflops = flops / (latency_ms * 1e-3) / 1e12
     tbps = bytes_moved / (latency_ms * 1e-3) / 1e12  # TB/s
-    return tbps, tflops
+    return latency_ms, tbps, tflops
 
 
 def parse_case(s: str) -> Case:
@@ -92,6 +93,8 @@ def main():
         help="Override cases, e.g. --shapes 1024,1024,1024 4096,4096,4096,128,128,64",
     )
     ap.add_argument("--no-check", action="store_true")
+    ap.add_argument("--output-csv", type=str, default=None,
+                    help="Also dump per-shape results to this CSV path")
     args = ap.parse_args()
 
     cases = args.shapes if args.shapes else DEFAULT_CASES
@@ -104,12 +107,12 @@ def main():
     for i, case in enumerate(cases, 1):
         print(f"[{i}/{len(cases)}] benchmarking "
               f"{case.M}x{case.N}x{case.K} ...", flush=True)
-        tbs, tflops = bench_one(case, dtype=dtype, check=not args.no_check)
+        latency_ms, tbs, tflops = bench_one(case, dtype=dtype, check=not args.no_check)
         shape = (
             f"{case.M}x{case.N}x{case.K}"
             f"_tile{case.block_M}x{case.block_N}x{case.block_K}"
         )
-        results.append((shape, DTYPE_NAME[dtype], tbs, tflops))
+        results.append((case, shape, DTYPE_NAME[dtype], latency_ms, tbs, tflops))
 
     print()
     print("=" * 80)
@@ -117,8 +120,24 @@ def main():
     print("=" * 80)
     print()
     print_header()
-    for shape, dtype_name, tbs, tflops in results:
+    for _case, shape, dtype_name, _lat, tbs, tflops in results:
         print_row("gemm", shape, dtype_name, tbs, tflops)
+
+    if args.output_csv:
+        with open(args.output_csv, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow([
+                "op", "M", "N", "K",
+                "block_M", "block_N", "block_K",
+                "dtype", "latency_ms", "tbps", "tflops",
+            ])
+            for case, _shape, dtype_name, lat, tbs, tflops in results:
+                w.writerow([
+                    "gemm", case.M, case.N, case.K,
+                    case.block_M, case.block_N, case.block_K,
+                    dtype_name, f"{lat:.6f}", f"{tbs:.6f}", f"{tflops:.6f}",
+                ])
+        print(f"\nWrote CSV: {args.output_csv}")
 
 
 if __name__ == "__main__":
