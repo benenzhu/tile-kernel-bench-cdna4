@@ -24,17 +24,17 @@ class Case:
     K: int
     block_M: int = 128
     block_N: int = 128
-    block_K: int = 32
+    block_K: int = 64
 
 
 DEFAULT_CASES = [
     Case(1024, 1024, 1024),
+    Case(1024, 8192, 8192),
     Case(2048, 2048, 2048),
     Case(4096, 4096, 4096),
-    Case(8192, 8192, 8192),
-    Case(1024, 8192, 8192),
-    Case(8192, 8192, 1024),
     Case(4096, 4096, 8192),
+    Case(8192, 8192, 1024),
+    Case(8192, 8192, 8192),
 ]
 
 
