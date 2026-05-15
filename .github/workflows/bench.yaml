@@ -35,13 +35,6 @@ jobs:
       - name: Build tilelang (editable)
         run: |
           cd /root/tilelang2
-          # CMake caches USE_ROCM in build/CMakeCache.txt; if a previous run
-          # configured CPU-only, the env var alone won't flip the cache. Wipe
-          # build/ when it exists but doesn't have ROCM enabled, then build.
-          if [ -f build/CMakeCache.txt ] && ! grep -q '^USE_ROCM:STRING=ON' build/CMakeCache.txt; then
-            echo "Stale CMake cache (USE_ROCM != ON) -- wiping build/"
-            rm -rf build
-          fi
           USE_ROCM=ON PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
 
       - name: Smoke test (single shape)
