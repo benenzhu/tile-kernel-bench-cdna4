@@ -57,6 +57,7 @@ def main():
 
     keys = sorted(set(base) | set(cur))
     regressions = []
+    improvements = []
 
     cols = (
         f"{'op':<12} {'shape':<28} {'dtype':<6} "
@@ -95,19 +96,34 @@ def main():
               f"{b['tflops']:>12.3f} {c['tflops']:>12.3f} {tflops_delta:>10} "
               f"{b['tbps']:>10.3f} {c['tbps']:>10.3f} {tbps_delta:>10}")
 
-        pct = (c["tflops"] - b["tflops"]) / b["tflops"] * 100.0 if b["tflops"] else 0
+        # Pick the primary perf metric per row: TFLOPS for compute-bound ops,
+        # TB/s for memory-bound (softmax/norm/etc emit tflops=0 in CSV).
+        if b["tflops"] > 0 and c["tflops"] > 0:
+            metric, b_v, c_v = "TFLOPS", b["tflops"], c["tflops"]
+        else:
+            metric, b_v, c_v = "TB/s", b["tbps"], c["tbps"]
+        pct = (c_v - b_v) / b_v * 100.0 if b_v else 0
         if pct < -args.threshold:
-            regressions.append((op, shape, dt, b, c, pct))
+            regressions.append((op, shape, dt, b, c, pct, metric, b_v, c_v))
+        elif pct > args.threshold:
+            improvements.append((op, shape, dt, b, c, pct, metric, b_v, c_v))
 
     print()
+    if improvements:
+        print(f"WINS: {len(improvements)} shape(s) improved > {args.threshold:.2f}%:")
+        for op, shape, dt, b, c, pct, metric, b_v, c_v in improvements:
+            print(f"  + {op} {shape} {dt}: {b_v:.3f} ({b['tile']}) -> "
+                  f"{c_v:.3f} ({c['tile']}) {metric} ({pct:+.2f}%)")
+        print()
+
     if regressions:
         print(f"FAIL: {len(regressions)} shape(s) regressed > {args.threshold:.2f}%:")
-        for op, shape, dt, b, c, pct in regressions:
-            print(f"  - {op} {shape} {dt}: {b['tflops']:.3f} ({b['tile']}) -> "
-                  f"{c['tflops']:.3f} ({c['tile']}) TFLOPS ({pct:+.2f}%)")
+        for op, shape, dt, b, c, pct, metric, b_v, c_v in regressions:
+            print(f"  - {op} {shape} {dt}: {b_v:.3f} ({b['tile']}) -> "
+                  f"{c_v:.3f} ({c['tile']}) {metric} ({pct:+.2f}%)")
         sys.exit(1)
     else:
-        print(f"OK: no TFLOPS regression beyond {args.threshold:.2f}%")
+        print(f"OK: no perf regression beyond {args.threshold:.2f}%")
 
 
 if __name__ == "__main__":
