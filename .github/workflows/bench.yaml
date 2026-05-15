@@ -48,7 +48,7 @@ jobs:
 
       - name: Show GPU info (amd-smi)
         run: |
-          amd-smi static || true
+          amd-smi || true
 
       - name: Run bench sweep (all ops)
         run: |
