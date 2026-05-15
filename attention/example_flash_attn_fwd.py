@@ -165,4 +165,5 @@ def bench_one(case, check):
         "latency_ms": latency_ms,
         "tbps": tbps,
         "tflops": tflops,
+        "_kernel": kernel,
     }
