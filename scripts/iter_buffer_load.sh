@@ -27,7 +27,7 @@ EXECUTION_BACKEND="${TILELANG_EXECUTION_BACKEND:-cython}"
 # NT with block 256x256x64, num_stages=2).
 M=8192
 N=8192
-K=2048
+K=8192
 BLOCK_M=256
 BLOCK_N=256
 BLOCK_K=64
@@ -128,6 +128,7 @@ export TILELANG_EXECUTION_BACKEND="${EXECUTION_BACKEND}"
 # Show hipcc command + its stdout/stderr when tilelang JIT-compiles a kernel.
 export TILELANG_VERBOSE=1
 export TILELANG_HIP_SAVE_TEMP_FILES=1
+touch tmp_remove
 rm tmp*
 echo "[iter] running NT ${M}x${N}x${K} tile ${BLOCK_M}x${BLOCK_N}x${BLOCK_K} stages=${NUM_STAGES} threads=${NUM_THREADS}"
 
@@ -145,8 +146,8 @@ t0 = time.time()
 k = matmul_nt(M, N, K, bM, bN, bK, num_stages=ns, num_threads=nt)
 print(f'[iter] compile: {time.time()-t0:.2f}s')
 
-a = torch.randn(M, K, device='cuda', dtype=torch.float16)
-b = torch.randn(N, K, device='cuda', dtype=torch.float16)
+a = torch.randn(M, K, device='cuda', dtype=torch.bfloat16)
+b = torch.randn(N, K, device='cuda', dtype=torch.bfloat16)
 c = k(a, b)
 torch.cuda.synchronize()
 

@@ -5,7 +5,7 @@ import tilelang.language as T
 @tilelang.jit(out_idx=[-1])
 def matmul(M, N, K, block_M, block_N, block_K,
            num_stages=3, num_threads=128,
-           dtype=T.float16, accum_dtype=T.float32):
+           dtype=T.bfloat16, accum_dtype=T.float32):
     """NN layout: B is stored as (K, N), no transpose."""
 
     @T.prim_func
@@ -24,7 +24,7 @@ def matmul(M, N, K, block_M, block_N, block_K,
             for k in T.Pipelined(T.ceildiv(K, block_K), num_stages=num_stages):
                 T.copy(A[by * block_M, k * block_K], A_shared)
                 T.copy(B[k * block_K, bx * block_N], B_shared)
-                T.gemm(A_shared, B_shared, C_local)
+                T.gemm_v2(A_shared, B_shared, C_local, k_pack=2)
 
             T.copy(C_local, C[by * block_M, bx * block_N])
 
@@ -34,7 +34,7 @@ def matmul(M, N, K, block_M, block_N, block_K,
 @tilelang.jit(out_idx=[-1])
 def matmul_nt(M, N, K, block_M, block_N, block_K,
               num_stages=3, num_threads=128,
-              dtype=T.float16, accum_dtype=T.float32):
+              dtype=T.bfloat16, accum_dtype=T.float32):
     """NT layout: B is stored as (N, K) and passed with transpose_B=True. This
     is the convention most LLM stacks use for weights so K stays contiguous."""
 
@@ -54,7 +54,7 @@ def matmul_nt(M, N, K, block_M, block_N, block_K,
             for k in T.Pipelined(T.ceildiv(K, block_K), num_stages=num_stages):
                 T.copy(A[by * block_M, k * block_K], A_shared)
                 T.copy(B[bx * block_N, k * block_K], B_shared)
-                T.gemm(A_shared, B_shared, C_local, transpose_B=True)
+                T.gemm_v2(A_shared, B_shared, C_local, k_pack=2, transpose_B=True)
 
             T.copy(C_local, C[by * block_M, bx * block_N])
 
@@ -66,8 +66,8 @@ def main():
 
     import torch
 
-    a = torch.randn(1024, 1024).cuda().half()
-    b = torch.randn(1024, 1024).cuda().half()
+    a = torch.randn(1024, 1024).cuda().bfloat16()
+    b = torch.randn(1024, 1024).cuda().bfloat16()
 
     c = kernel(a, b)
 
@@ -155,12 +155,12 @@ def bench_one(case, check):
     )
 
     if check:
-        a = torch.randn(M, K, device="cuda", dtype=torch.float16)
+        a = torch.randn(M, K, device="cuda", dtype=torch.bfloat16)
         if transpose_b:
-            b = torch.randn(N, K, device="cuda", dtype=torch.float16)
+            b = torch.randn(N, K, device="cuda", dtype=torch.bfloat16)
             ref = a @ b.T
         else:
-            b = torch.randn(K, N, device="cuda", dtype=torch.float16)
+            b = torch.randn(K, N, device="cuda", dtype=torch.bfloat16)
             ref = a @ b
         c = kernel(a, b)
         torch.testing.assert_close(c, ref, rtol=1e-2, atol=1e-2)
