@@ -116,20 +116,20 @@ _tlbench._bench_with_cupti = _patched_bench_with_cupti
 # _JITKernel._compile_and_create_adapter = _patched_compile_and_create_adapter
 
 
-# def get_kernel_resources(kernel):
-#     """Return ``(n_regs, n_spills_total)`` for a HIP kernel, or
-#     ``(None, None)`` on other targets / cache-loaded kernels with no
-#     captured remarks.
+def get_kernel_resources(kernel):
+    """Return ``(n_regs, n_spills_total)`` for a HIP kernel, or
+    ``(None, None)`` on other targets / cache-loaded kernels with no
+    captured remarks.
 
-#     `n_spills_total` is `VGPRs Spill + ScratchSize_bytes // 4` -- treating
-#     one scratch dword the same as one spilled VGPR for accounting, since
-#     both end up in main memory and cost roughly the same to access.
-#     """
-#     info = getattr(kernel, "_primary_resource_usage", lambda: None)()
-#     if info is None:
-#         return None, None
-#     try:
-#         scratch_bytes = int(info.extra.get("ScratchSize [bytes/lane]", "0"))
-#     except (ValueError, AttributeError):
-#         scratch_bytes = 0
-#     return info.n_regs, info.n_spills + scratch_bytes // 4
+    `n_spills_total` is `VGPRs Spill + ScratchSize_bytes // 4` -- treating
+    one scratch dword the same as one spilled VGPR for accounting, since
+    both end up in main memory and cost roughly the same to access.
+    """
+    info = getattr(kernel, "_primary_resource_usage", lambda: None)()
+    if info is None:
+        return None, None
+    try:
+        scratch_bytes = int(info.extra.get("ScratchSize [bytes/lane]", "0"))
+    except (ValueError, AttributeError):
+        scratch_bytes = 0
+    return info.n_regs, info.n_spills + scratch_bytes // 4
