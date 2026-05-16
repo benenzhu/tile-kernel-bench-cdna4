@@ -35,13 +35,39 @@ jobs:
       # at TVMFFIPyArgSetterTorchFallback_. The cython execution backend
       # bypasses that path.
       TILELANG_EXECUTION_BACKEND: cython
+      # Pin tilelang to a specific commit so bench numbers are reproducible
+      # across runs and across PRs -- bumping this var is the only way to
+      # change the compiler version used by CI.
+      TILELANG_REPO: /root/tilelang2
+      TILELANG_COMMIT: 23be555ca90e421832018788348509d43552085d
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
 
+      - name: Verify tilelang working tree is clean
+        run: |
+          cd "${TILELANG_REPO}"
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "ERROR: ${TILELANG_REPO} has uncommitted changes; refusing to bench against a dirty tree."
+            git status --short
+            exit 1
+          fi
+          echo "Clean."
+
+      - name: Pin tilelang to ${{ env.TILELANG_COMMIT }}
+        run: |
+          cd "${TILELANG_REPO}"
+          # Make sure the pinned SHA is reachable; fetch all branches if not.
+          if ! git cat-file -e "${TILELANG_COMMIT}^{commit}" 2>/dev/null; then
+            echo "Commit not present locally -- fetching all refs."
+            git fetch --all --tags --prune
+          fi
+          git checkout --detach "${TILELANG_COMMIT}"
+          echo "Now at: $(git log -1 --oneline)"
+
       - name: Build tilelang (editable)
         run: |
-          cd /root/tilelang2
+          cd "${TILELANG_REPO}"
           USE_ROCM=ON PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
 
       - name: Smoke test (single shape)
