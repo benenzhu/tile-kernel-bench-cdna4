@@ -1,0 +1,2 @@
+hipcc -std=c++17 -fPIC --offload-arch=gfx950 --shared _b.cpp -Rpass-analysis=kernel-resource-usage -I/root/tilelang2/3rdparty/composable_kernel/include --save-temps -g -I/root/tilelang2/3rdparty/../src -o _b.so
+python gen_pure.py _b*-gfx950.s

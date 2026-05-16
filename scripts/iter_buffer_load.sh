@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
+sed -i 's/zipfile\.ZIP_DEFLATED/zipfile.ZIP_STORED/g' /opt/venv/lib/python3.10/site-packages/scikit_build_core/build/_wheelfile.py
 # ---- step 1: wipe cache ----------------------------------------------------
 if [[ -z "${SKIP_CACHE_WIPE:-}" ]]; then
   echo "[iter] wiping tilelang JIT cache"
@@ -127,7 +127,8 @@ fi
 export TILELANG_EXECUTION_BACKEND="${EXECUTION_BACKEND}"
 # Show hipcc command + its stdout/stderr when tilelang JIT-compiles a kernel.
 export TILELANG_VERBOSE=1
-
+export TILELANG_HIP_SAVE_TEMP_FILES=1
+rm tmp*
 echo "[iter] running NT ${M}x${N}x${K} tile ${BLOCK_M}x${BLOCK_N}x${BLOCK_K} stages=${NUM_STAGES} threads=${NUM_THREADS}"
 
 python -c "
@@ -172,3 +173,4 @@ print(f'[iter] TB/s:     {tbps:.3f}')
 print(f'[iter] VGPR:     {k.n_regs}')
 print(f'[iter] spill+sc: {k.n_spills}')
 "
+python gen_pure.py tmp*-gfx950.s
