@@ -13,9 +13,15 @@ Run:
 """
 import argparse
 import csv
+import gc
 import importlib
 import sys
 import traceback
+
+# Python's cyclic-GC pauses occasionally land inside a bench iteration and
+# add tens of ms of jitter to the median. We don't need it during benching --
+# no long-lived cycles get allocated -- so disable it for the whole run.
+gc.disable()
 
 # Apply local tilelang monkey-patches BEFORE any op module imports tilelang.
 import tl_patches  # noqa: F401
