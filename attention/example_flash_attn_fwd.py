@@ -137,7 +137,7 @@ def bench_one(case, check):
     is_causal = case["is_causal"]
     suffix = "_causal" if is_causal else ""
 
-    kernel = flashattn(b, h, s, d, is_causal)
+    kernel = flashattn(b, h, s, d, is_causal, threads=512)
 
     q = torch.randn(b, s, h, d, device="cuda", dtype=torch.float16)
     k = torch.randn(b, s, h, d, device="cuda", dtype=torch.float16)
