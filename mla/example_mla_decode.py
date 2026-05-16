@@ -152,9 +152,9 @@ def _ref_program(q, q_pe, kv, k_pe):
 CASES = [
     # (batch, heads, kv_heads, kv_ctx, dim, pe_dim, BLOCK_N, BLOCK_H, num_split, threads)
     dict(batch=64, heads=128, kv_heads=1, kv_ctx=4096, dim=512, pe_dim=64,
-         BLOCK_N=32, BLOCK_H=64, num_split=4, threads=256),
+         BLOCK_N=32, BLOCK_H=64, num_split=4, threads=512),
     dict(batch=128, heads=128, kv_heads=1, kv_ctx=8192, dim=512, pe_dim=64,
-         BLOCK_N=32, BLOCK_H=64, num_split=4, threads=256),
+         BLOCK_N=32, BLOCK_H=64, num_split=4, threads=512),
 ]
 
 
