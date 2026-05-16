@@ -4,7 +4,8 @@ import tilelang.language as T
 
 @tilelang.jit(out_idx=[-1])
 def matmul(M, N, K, block_M, block_N, block_K,
-           num_stages=3, dtype=T.float16, accum_dtype=T.float32):
+           num_stages=3, num_threads=128,
+           dtype=T.float16, accum_dtype=T.float32):
     """NN layout: B is stored as (K, N), no transpose."""
 
     @T.prim_func
@@ -13,7 +14,8 @@ def matmul(M, N, K, block_M, block_N, block_K,
         B: T.Tensor((K, N), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M), threads=128) as (bx, by):
+        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M),
+                      threads=num_threads) as (bx, by):
             A_shared = T.alloc_shared((block_M, block_K), dtype)
             B_shared = T.alloc_shared((block_K, block_N), dtype)
             C_local = T.alloc_fragment((block_M, block_N), accum_dtype)
@@ -31,7 +33,8 @@ def matmul(M, N, K, block_M, block_N, block_K,
 
 @tilelang.jit(out_idx=[-1])
 def matmul_nt(M, N, K, block_M, block_N, block_K,
-              num_stages=3, dtype=T.float16, accum_dtype=T.float32):
+              num_stages=3, num_threads=128,
+              dtype=T.float16, accum_dtype=T.float32):
     """NT layout: B is stored as (N, K) and passed with transpose_B=True. This
     is the convention most LLM stacks use for weights so K stays contiguous."""
 
@@ -41,7 +44,8 @@ def matmul_nt(M, N, K, block_M, block_N, block_K,
         B: T.Tensor((N, K), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M), threads=128) as (bx, by):
+        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M),
+                      threads=num_threads) as (bx, by):
             A_shared = T.alloc_shared((block_M, block_K), dtype)
             B_shared = T.alloc_shared((block_N, block_K), dtype)
             C_local = T.alloc_fragment((block_M, block_N), accum_dtype)
@@ -102,23 +106,24 @@ OP_NAME = "gemm"
 DTYPE = "fp16"
 
 _SHAPES = [
-    # (M, N, K, block_M, block_N, block_K, num_stages)
-    (1024, 1024, 16384, 128, 128, 32, 3),
-    (2048, 2048, 2048, 128, 128, 32, 3),
-    (4096, 4096, 4096, 128, 128, 32, 3),
-    (8192, 8192, 8192, 128, 128, 32, 3),
-    (1024, 8192, 8192, 128, 128, 32, 3),
-    (8192, 8192, 1024, 128, 128, 32, 3),
-    (4096, 4096, 8192, 128, 128, 32, 3),
+    # (M, N, K, block_M, block_N, block_K, num_stages, num_threads)
+    (1024, 1024, 16384, 128, 128, 32, 3, 128),
+    (2048, 2048, 2048, 128, 128, 32, 3, 128),
+    (4096, 4096, 4096, 128, 128, 32, 3, 128),
+    (8192, 8192, 8192, 128, 128, 32, 3, 128),
+    (1024, 8192, 8192, 128, 128, 32, 3, 128),
+    (8192, 8192, 1024, 128, 128, 32, 3, 128),
+    (4096, 4096, 8192, 128, 128, 32, 3, 128),
     # Big-K compute-heavy case; needs num_stages=2 to fit 64 KB CDNA4 LDS
     # (per-stage = 2 * 256 * 64 * 2 B = 64 KB; 2 stages = 128 KB).
-    (8192, 8192, 16384, 256, 256, 64, 2),
+    # 512 threads/block gives more lanes to cover the 256x256 tile.
+    (8192, 8192, 16384, 256, 256, 64, 2, 512),
 ]
 
 
 def _make_cases():
     out = []
-    for M, N, K, bM, bN, bK, ns in _SHAPES:
+    for M, N, K, bM, bN, bK, ns, nt in _SHAPES:
         # Order matters: NN then NT for the same shape so they print
         # adjacent without needing to sort the report afterwards.
         for transpose_b in (False, True):
@@ -126,6 +131,7 @@ def _make_cases():
                 M=M, N=N, K=K,
                 block_M=bM, block_N=bN, block_K=bK,
                 num_stages=ns,
+                num_threads=nt,
                 transpose_b=transpose_b,
             ))
     return out
@@ -145,6 +151,7 @@ def bench_one(case, check):
         M, N, K,
         case["block_M"], case["block_N"], case["block_K"],
         num_stages=case.get("num_stages", 3),
+        num_threads=case.get("num_threads", 128),
     )
 
     if check:
