@@ -175,4 +175,16 @@ print(f'[iter] TB/s:     {tbps:.3f}')
 print(f'[iter] VGPR:     {k.n_regs}')
 print(f'[iter] spill+sc: {k.n_spills}')
 "
-python gen_pure.py tmp*-gfx950.s
+# Only post-process the saved assembly when a real .s actually exists.
+# On a JIT cache hit (e.g. --skip-cache-wipe, or when the cache wipe
+# misses the active version) no fresh tmp*-gfx950.s is emitted, and
+# passing the literal glob to gen_pure.py raises FileNotFoundError
+# after the bench has already succeeded.
+shopt -s nullglob
+asm_files=( tmp*-gfx950.s )
+shopt -u nullglob
+if (( ${#asm_files[@]} > 0 )); then
+    python gen_pure.py "${asm_files[@]}"
+else
+    echo "[iter] no fresh tmp*-gfx950.s to post-process (gen_pure.py skipped)"
+fi
