@@ -39,8 +39,6 @@ jobs:
       # across runs and across PRs -- bumping this var is the only way to
       # change the compiler version used by CI.
       TILELANG_REPO: /root/tilelang2
-      # HEAD of branch `feat/hip-resource-attrs` on the tilelang fork --
-      # fetch from there if this SHA is no longer reachable from the local cache.
       TILELANG_COMMIT: 4736c94ac34f2e88bc2ad0ecc139cee3e2cf05b6 #(HEAD -> feat-c-remove_vmcnt0, origin/feat-c-remove_vmcnt0)
     steps:
       - name: Checkout bench repo

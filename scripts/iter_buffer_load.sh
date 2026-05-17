@@ -27,7 +27,7 @@ EXECUTION_BACKEND="${TILELANG_EXECUTION_BACKEND:-cython}"
 # NT with block 256x256x64, num_stages=2).
 M=8192
 N=8192
-K=2048
+K=8192
 BLOCK_M=256
 BLOCK_N=256
 BLOCK_K=64
@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
+sed -i 's/zipfile\.ZIP_DEFLATED/zipfile.ZIP_STORED/g' /opt/venv/lib/python3.10/site-packages/scikit_build_core/build/_wheelfile.py
 # ---- step 1: wipe cache ----------------------------------------------------
 if [[ -z "${SKIP_CACHE_WIPE:-}" ]]; then
   echo "[iter] wiping tilelang JIT cache"
@@ -106,6 +106,7 @@ fi
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   echo "[iter] rebuilding tilelang in ${TILELANG_DIR}"
   pushd "${TILELANG_DIR}" >/dev/null
+  git submodule update --init --recursive
   USE_ROCM=ON VERBOSE=1 PYTHONUNBUFFERED=1 \
     pip install -e . --no-deps --no-build-isolation -v
   popd >/dev/null
@@ -127,7 +128,9 @@ fi
 export TILELANG_EXECUTION_BACKEND="${EXECUTION_BACKEND}"
 # Show hipcc command + its stdout/stderr when tilelang JIT-compiles a kernel.
 export TILELANG_VERBOSE=1
-
+export TILELANG_HIP_SAVE_TEMP_FILES=1
+touch tmp_remove
+rm tmp*
 echo "[iter] running NT ${M}x${N}x${K} tile ${BLOCK_M}x${BLOCK_N}x${BLOCK_K} stages=${NUM_STAGES} threads=${NUM_THREADS}"
 
 python -c "
@@ -144,8 +147,8 @@ t0 = time.time()
 k = matmul_nt(M, N, K, bM, bN, bK, num_stages=ns, num_threads=nt)
 print(f'[iter] compile: {time.time()-t0:.2f}s')
 
-a = torch.randn(M, K, device='cuda', dtype=torch.float16)
-b = torch.randn(N, K, device='cuda', dtype=torch.float16)
+a = torch.randn(M, K, device='cuda', dtype=torch.bfloat16)
+b = torch.randn(N, K, device='cuda', dtype=torch.bfloat16)
 c = k(a, b)
 torch.cuda.synchronize()
 
@@ -172,3 +175,16 @@ print(f'[iter] TB/s:     {tbps:.3f}')
 print(f'[iter] VGPR:     {k.n_regs}')
 print(f'[iter] spill+sc: {k.n_spills}')
 "
+# Only post-process the saved assembly when a real .s actually exists.
+# On a JIT cache hit (e.g. --skip-cache-wipe, or when the cache wipe
+# misses the active version) no fresh tmp*-gfx950.s is emitted, and
+# passing the literal glob to gen_pure.py raises FileNotFoundError
+# after the bench has already succeeded.
+shopt -s nullglob
+asm_files=( tmp*-gfx950.s )
+shopt -u nullglob
+if (( ${#asm_files[@]} > 0 )); then
+    python gen_pure.py "${asm_files[@]}"
+else
+    echo "[iter] no fresh tmp*-gfx950.s to post-process (gen_pure.py skipped)"
+fi
