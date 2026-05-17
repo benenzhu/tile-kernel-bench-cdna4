@@ -3,3 +3,6 @@ __pycache__/
 *.pyo
 tmp*
 _b*
+_fast*
+a.log
+_slow.cu
