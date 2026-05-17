@@ -103,7 +103,7 @@ def run_regression_perf():
 # ---------------------------------------------------------------------------
 
 OP_NAME = "gemm"
-DTYPE = "fp16"
+DTYPE = "bf16"
 
 _SHAPES = [
     # (M, N, K, block_M, block_N, block_K, num_stages, num_threads)
