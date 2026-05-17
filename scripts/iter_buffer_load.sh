@@ -106,6 +106,7 @@ fi
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   echo "[iter] rebuilding tilelang in ${TILELANG_DIR}"
   pushd "${TILELANG_DIR}" >/dev/null
+  git submodule update --init --recursive
   USE_ROCM=ON VERBOSE=1 PYTHONUNBUFFERED=1 \
     pip install -e . --no-deps --no-build-isolation -v
   popd >/dev/null
