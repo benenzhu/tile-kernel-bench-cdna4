@@ -39,7 +39,7 @@ jobs:
       # across runs and across PRs -- bumping this var is the only way to
       # change the compiler version used by CI.
       TILELANG_REPO: /root/tilelang2
-      TILELANG_COMMIT: 23be555ca90e421832018788348509d43552085d # feat/hip-resource-attrs
+      TILELANG_COMMIT: e6ff3f05f8fc9a606af9978851d7bb26495e1edd  #(HEAD -> feat-c-remove_vmcnt0, origin/feat-c-remove_vmcnt0)
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
