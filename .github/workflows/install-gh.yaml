@@ -1,0 +1,52 @@
+name: Install gh CLI on self-hosted runner
+
+# Manual one-shot: installs the GitHub CLI to /usr/local/bin on the
+# self-hosted runner so subsequent jobs (and ssh sessions) have it.
+# Persists across CI runs because the runner FS is not ephemeral.
+#
+# Trigger from the Actions tab ("Run workflow") or with
+#   gh workflow run install-gh.yaml -R <owner>/<repo>
+on:
+  workflow_dispatch:
+    inputs:
+      gh_version:
+        description: "gh release version (e.g. 2.62.0)"
+        required: false
+        default: "2.62.0"
+
+jobs:
+  install:
+    runs-on: self-hosted
+    steps:
+      - name: Show current state
+        run: |
+          echo "whoami: $(whoami)"
+          echo "PATH: $PATH"
+          which gh || echo "gh: not installed"
+          gh --version || true
+
+      - name: Install gh to /usr/local/bin
+        env:
+          GH_VERSION: ${{ inputs.gh_version }}
+        run: |
+          set -e
+          tarball="gh_${GH_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${tarball}"
+          tmp=$(mktemp -d)
+          echo "Downloading ${url}"
+          curl -fsSL "${url}" -o "${tmp}/${tarball}"
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}"
+          install -m 0755 "${tmp}/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+          rm -rf "${tmp}"
+          gh --version
+
+      - name: Verify token from /dev/shm
+        run: |
+          if [ ! -r /dev/shm/gh_token ]; then
+            echo "WARN: /dev/shm/gh_token not readable (skipping auth verify)"
+            exit 0
+          fi
+          # Use the token without echoing it. gh auth status reads
+          # GH_TOKEN/GITHUB_TOKEN from env.
+          export GH_TOKEN=$(cat /dev/shm/gh_token)
+          gh auth status
