@@ -182,6 +182,7 @@ def bench_one(case, check):
         "_kernel": kernel,
     }
 
-
+def main():
+    print(bench_one(CASES[0], True))
 if __name__ == "__main__":
     main()
