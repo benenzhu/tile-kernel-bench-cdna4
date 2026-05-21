@@ -70,6 +70,14 @@ jobs:
           cd "${TILELANG_REPO}"
           USE_ROCM=ON PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
 
+      - name: Install bench-only runtime deps
+        run: |
+          # einops is imported at the top of mla/example_mla_decode.py and
+          # bench.py loads every op module up front, so a missing einops
+          # crashes the whole sweep (not just MLA). The self-hosted runner's
+          # venv may not always carry it (e.g. after a Python upgrade).
+          pip install einops
+
       - name: Smoke test (single shape)
         run: |
           python gemm/example_gemm.py
