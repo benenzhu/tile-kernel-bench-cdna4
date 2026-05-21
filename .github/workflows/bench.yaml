@@ -39,7 +39,7 @@ jobs:
       # across runs and across PRs -- bumping this var is the only way to
       # change the compiler version used by CI.
       TILELANG_REPO: /root/tilelang2
-      TILELANG_COMMIT: 23be555ca90e421832018788348509d43552085d # feat/hip-resource-attrs
+      TILELANG_COMMIT: df611d30d003db0c3bb857b49d02a4c079360a1c # feat-c-remove_vmcnt0 (M10+M11: chunk-block-aware binding + always-LDS)
     steps:
       - name: Checkout bench repo
         uses: actions/checkout@v4
@@ -69,6 +69,47 @@ jobs:
         run: |
           cd "${TILELANG_REPO}"
           USE_ROCM=ON PYTHONUNBUFFERED=1 VERBOSE=1 pip install -e . --no-deps --no-build-isolation -v
+
+      - name: Install bench-only runtime deps
+        run: |
+          # einops is imported at the top of mla/example_mla_decode.py and
+          # bench.py loads every op module up front, so a missing einops
+          # crashes the whole sweep (not just MLA). The self-hosted runner's
+          # venv may not always carry it (e.g. after a Python upgrade).
+          pip install einops
+
+      - name: Ensure gh CLI is installed
+        env:
+          GH_VERSION: "2.62.0"
+        run: |
+          # Idempotent install of the GitHub CLI to /usr/local/bin so
+          # subsequent CI runs (and interactive sessions on the
+          # self-hosted runner) have `gh` available. Skips if a usable
+          # `gh` is already on PATH.
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh already installed: $(gh --version | head -n1)"
+            exit 0
+          fi
+          tarball="gh_${GH_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${tarball}"
+          tmp=$(mktemp -d)
+          echo "Downloading ${url}"
+          curl -fsSL "${url}" -o "${tmp}/${tarball}"
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}"
+          install -m 0755 "${tmp}/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+          rm -rf "${tmp}"
+          gh --version
+
+      - name: Verify gh auth via /dev/shm token (if present)
+        run: |
+          # Optional: if a token has been staged in /dev/shm/gh_token,
+          # use it to authenticate `gh`. Token is read but never echoed.
+          if [ -r /dev/shm/gh_token ]; then
+            export GH_TOKEN=$(cat /dev/shm/gh_token)
+            gh auth status || echo "gh auth status reported a problem"
+          else
+            echo "/dev/shm/gh_token not present; skipping gh auth verify"
+          fi
 
       - name: Smoke test (single shape)
         run: |

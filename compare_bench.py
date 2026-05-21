@@ -208,6 +208,66 @@ def main():
         sys.exit(1)
 
 
+def _md_table(headers, rows):
+    """Render a markdown table from a list of header strings and rows
+    (each row is a list of cell strings, same length as headers)."""
+    out = []
+    out.append("| " + " | ".join(headers) + " |")
+    out.append("|" + "|".join(["---"] * len(headers)) + "|")
+    for r in rows:
+        out.append("| " + " | ".join(r) + " |")
+    return out
+
+
+def _perf_table(section_rows):
+    """Build a perf table (Regressions / Wins).
+
+    section_rows: iterable of (op, shape, dtype, b, c, pct, metric, b_v, c_v).
+    The 'Tile' column is included only if at least one row has a tile change.
+    For rows where tile is unchanged, that cell shows just the tile.
+    """
+    rows = list(section_rows)
+    any_tile_changed = any(r[3]["tile"] != r[4]["tile"] for r in rows)
+    headers = ["op", "shape", "dtype", "base", "current", "Δ", "metric"]
+    if any_tile_changed:
+        headers.append("tile")
+    out_rows = []
+    for op, shape, dt, b, c, pct, metric, b_v, c_v in rows:
+        row = [
+            f"`{op}`",
+            f"`{shape}`",
+            dt,
+            f"{b_v:.3f}",
+            f"**{c_v:.3f}**",
+            f"**{pct:+.2f}%**",
+            metric,
+        ]
+        if any_tile_changed:
+            row.append(
+                f"`{b['tile']}` → `{c['tile']}`"
+                if b["tile"] != c["tile"]
+                else f"`{b['tile']}`"
+            )
+        out_rows.append(row)
+    return _md_table(headers, out_rows)
+
+
+def _resource_table(section_rows, unit_label):
+    """Build a resource table (VGPR / Spills). No tile column."""
+    headers = ["op", "shape", "dtype", "base", "current", "Δ"]
+    out_rows = []
+    for op, shape, dt, b_n, c_n in section_rows:
+        out_rows.append([
+            f"`{op}`",
+            f"`{shape}`",
+            dt,
+            str(b_n),
+            f"**{c_n}**",
+            f"**{c_n - b_n:+d} {unit_label}**",
+        ])
+    return _md_table(headers, out_rows)
+
+
 def _write_markdown(path, threshold, header_line, table_rows,
                     regressions, improvements, new_shapes, missing_shapes,
                     regs_down=None, regs_up=None,
@@ -233,55 +293,47 @@ def _write_markdown(path, threshold, header_line, table_rows,
 
     if regressions:
         lines.append(f"### Regressions ({len(regressions)})")
-        for op, shape, dt, b, c, pct, metric, b_v, c_v in regressions:
-            lines.append(
-                f"- `{op}` `{shape}` {dt}: **{b_v:.3f} → {c_v:.3f} {metric} ({pct:+.2f}%)** "
-                f"(tile `{b['tile']}` → `{c['tile']}`)"
-            )
+        lines.extend(_perf_table(regressions))
         lines.append("")
 
     if improvements:
         lines.append(f"### Wins ({len(improvements)})")
-        for op, shape, dt, b, c, pct, metric, b_v, c_v in improvements:
-            lines.append(
-                f"- `{op}` `{shape}` {dt}: **{b_v:.3f} → {c_v:.3f} {metric} ({pct:+.2f}%)** "
-                f"(tile `{b['tile']}` → `{c['tile']}`)"
-            )
+        lines.extend(_perf_table(improvements))
         lines.append("")
 
     if new_shapes:
         lines.append(f"### New shapes ({len(new_shapes)})")
+        rows = []
         for op, shape, dt, c in new_shapes:
             metric, value = ("TFLOPS", c["tflops"]) if c["tflops"] > 0 else ("TB/s", c["tbps"])
-            lines.append(f"- `{op}` `{shape}` {dt}: {value:.3f} {metric} (tile `{c['tile']}`)")
+            rows.append([f"`{op}`", f"`{shape}`", dt, f"{value:.3f}", metric, f"`{c['tile']}`"])
+        lines.extend(_md_table(["op", "shape", "dtype", "value", "metric", "tile"], rows))
         lines.append("")
 
     if missing_shapes:
         lines.append(f"### Removed shapes ({len(missing_shapes)})")
+        rows = []
         for op, shape, dt, b in missing_shapes:
             metric, value = ("TFLOPS", b["tflops"]) if b["tflops"] > 0 else ("TB/s", b["tbps"])
-            lines.append(f"- `{op}` `{shape}` {dt}: was {value:.3f} {metric}")
+            rows.append([f"`{op}`", f"`{shape}`", dt, f"{value:.3f}", metric])
+        lines.extend(_md_table(["op", "shape", "dtype", "was", "metric"], rows))
         lines.append("")
 
     if regs_down:
         lines.append(f"### VGPR down ({len(regs_down)}) — compiler win")
-        for op, shape, dt, b_n, c_n in regs_down:
-            lines.append(f"- `{op}` `{shape}` {dt}: **{b_n} → {c_n} VGPR ({c_n - b_n:+d})**")
+        lines.extend(_resource_table(regs_down, "VGPR"))
         lines.append("")
     if regs_up:
         lines.append(f"### VGPR up ({len(regs_up)}) — compiler regression")
-        for op, shape, dt, b_n, c_n in regs_up:
-            lines.append(f"- `{op}` `{shape}` {dt}: **{b_n} → {c_n} VGPR ({c_n - b_n:+d})**")
+        lines.extend(_resource_table(regs_up, "VGPR"))
         lines.append("")
     if spills_down:
         lines.append(f"### Spills down ({len(spills_down)}) — compiler win")
-        for op, shape, dt, b_n, c_n in spills_down:
-            lines.append(f"- `{op}` `{shape}` {dt}: **{b_n} → {c_n} spill+sc/4 ({c_n - b_n:+d})**")
+        lines.extend(_resource_table(spills_down, "spill+sc/4"))
         lines.append("")
     if spills_up:
         lines.append(f"### Spills up ({len(spills_up)}) — compiler regression")
-        for op, shape, dt, b_n, c_n in spills_up:
-            lines.append(f"- `{op}` `{shape}` {dt}: **{b_n} → {c_n} spill+sc/4 ({c_n - b_n:+d})**")
+        lines.extend(_resource_table(spills_up, "spill+sc/4"))
         lines.append("")
 
     lines.append(f"<details><summary>Full compare table ({len(table_rows)} rows)</summary>")
